@@ -120,19 +120,18 @@ const getOrders = async (req, res) => {
 const getTopSellingProducts = async (req, res) => {
   try {
     const topSelling = await Order.aggregate([
-      // 1. Match only orders with at least one item and required fields
+      // 1. Match only orders with at least one item and required fields, without checking 'isPaid'
       {
         $match: {
           'orderItems.0': { $exists: true },
           'orderItems.price': { $exists: true },
-          'orderItems.quantity': { $exists: true },
-          'isPaid': true // Only count paid orders for revenue reports
+          'orderItems.quantity': { $exists: true }
         }
       },
-      
+
       // 2. Deconstruct the orderItems array
       { $unwind: '$orderItems' },
-      
+
       // 3. Group by product ID and calculate totals
       {
         $group: {
@@ -144,13 +143,13 @@ const getTopSellingProducts = async (req, res) => {
           },
         },
       },
-      
+
       // 4. Sort by total revenue (descending)
       { $sort: { totalRevenue: -1 } },
-      
+
       // 5. Limit to top 10 (or adjust as needed)
       { $limit: 10 },
-      
+
       // 6. Project the final structure
       {
         $project: {
@@ -175,8 +174,8 @@ const getTopSellingProducts = async (req, res) => {
 const getSalesByMonth = async (req, res) => {
   try {
     const salesByMonth = await Order.aggregate([
-      // 1. Match only paid orders with at least one item
-      { $match: { 'orderItems.0': { $exists: true }, isPaid: true } },
+      // 1. Match only orders with at least one item, without checking 'isPaid'
+      { $match: { 'orderItems.0': { $exists: true } } },
 
       // 2. Group by year and month
       {
@@ -188,10 +187,10 @@ const getSalesByMonth = async (req, res) => {
           totalRevenue: { $sum: '$totalPrice' },
         },
       },
-      
+
       // 3. Sort chronologically
       { $sort: { '_id.year': 1, '_id.month': 1 } },
-      
+
       // 4. Project and format the output
       {
         $project: {
