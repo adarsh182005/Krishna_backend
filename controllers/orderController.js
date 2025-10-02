@@ -120,30 +120,25 @@ const getOrders = async (req, res) => {
 const getTopSellingProducts = async (req, res) => {
   try {
     const topSelling = await Order.aggregate([
-      // 1. Match only documents that have a valid orderItems array
+      // 1. Match only orders with a valid, non-empty orderItems array
       {
         $match: {
-          'orderItems': { $exists: true, $type: 'array', $ne: [] },
-          'orderItems.0.price': { $exists: true, $type: 'number' },
-          'orderItems.0.quantity': { $exists: true, $type: 'number' },
+          orderItems: { $exists: true, $type: 'array', $ne: [] }
         }
       },
-
       // 2. Deconstruct the orderItems array
       { $unwind: '$orderItems' },
-
-      // 3. Re-match to filter out any remaining malformed items after unwind
+      // 3. Match again, ensuring each item has the necessary numeric fields
       {
         $match: {
           'orderItems.price': { $exists: true, $type: 'number' },
           'orderItems.quantity': { $exists: true, $type: 'number', $gt: 0 },
         }
       },
-
       // 4. Group by product ID and calculate totals
       {
         $group: {
-          _id: '$orderItems.product', // Group by product ID
+          _id: '$orderItems.product',
           name: { $first: '$orderItems.name' },
           totalUnitsSold: { $sum: '$orderItems.quantity' },
           totalRevenue: {
@@ -151,13 +146,10 @@ const getTopSellingProducts = async (req, res) => {
           },
         },
       },
-
       // 5. Sort by total revenue (descending)
       { $sort: { totalRevenue: -1 } },
-
-      // 6. Limit to top 10 (or adjust as needed)
+      // 6. Limit to top 10
       { $limit: 10 },
-
       // 7. Project the final structure
       {
         $project: {
@@ -172,8 +164,7 @@ const getTopSellingProducts = async (req, res) => {
     res.json(topSelling);
   } catch (error) {
     console.error('Error fetching top selling products:', error);
-    // Log the specific database error for better debugging
-    res.status(500).json({ message: 'Failed to fetch top selling products report.' });
+    res.status(500).json({ message: `Aggregation pipeline failed: ${error.message}` });
   }
 };
 
@@ -183,15 +174,12 @@ const getTopSellingProducts = async (req, res) => {
 const getSalesByMonth = async (req, res) => {
   try {
     const salesByMonth = await Order.aggregate([
-      // 1. Match only documents with a valid orderItems array
+      // 1. Match only orders with a valid, non-empty orderItems array
       {
         $match: {
-          'orderItems': { $exists: true, $type: 'array', $ne: [] },
-          'orderItems.0.price': { $exists: true, $type: 'number' },
-          'orderItems.0.quantity': { $exists: true, $type: 'number' },
+          orderItems: { $exists: true, $type: 'array', $ne: [] }
         }
       },
-
       // 2. Group by year and month
       {
         $group: {
@@ -202,16 +190,13 @@ const getSalesByMonth = async (req, res) => {
           totalRevenue: { $sum: '$totalPrice' },
         },
       },
-
       // 3. Sort chronologically
       { $sort: { '_id.year': 1, '_id.month': 1 } },
-
       // 4. Project and format the output
       {
         $project: {
           _id: 0,
           revenue: '$totalRevenue',
-          // Use $dateToString to format the month (requires MongoDB 4.0+)
           month: {
             $dateToString: {
               format: '%b %Y',
@@ -219,7 +204,7 @@ const getSalesByMonth = async (req, res) => {
                 $dateFromParts: {
                   year: '$_id.year',
                   month: '$_id.month',
-                  day: 1, // Must provide day for $dateFromParts
+                  day: 1,
                 },
               },
             },
@@ -231,8 +216,7 @@ const getSalesByMonth = async (req, res) => {
     res.json(salesByMonth);
   } catch (error) {
     console.error('Error fetching sales by month report:', error);
-    // Log the specific database error for better debugging
-    res.status(500).json({ message: 'Failed to fetch monthly sales report.' });
+    res.status(500).json({ message: `Aggregation pipeline failed: ${error.message}` });
   }
 };
 
