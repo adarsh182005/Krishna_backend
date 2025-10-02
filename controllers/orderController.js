@@ -120,19 +120,27 @@ const getOrders = async (req, res) => {
 const getTopSellingProducts = async (req, res) => {
   try {
     const topSelling = await Order.aggregate([
-      // 1. Match only orders with at least one item and required fields, without checking 'isPaid'
+      // 1. Match only documents that have a valid orderItems array
       {
         $match: {
-          'orderItems.0': { $exists: true },
-          'orderItems.price': { $exists: true },
-          'orderItems.quantity': { $exists: true }
+          'orderItems': { $exists: true, $type: 'array', $ne: [] },
+          'orderItems.0.price': { $exists: true, $type: 'number' },
+          'orderItems.0.quantity': { $exists: true, $type: 'number' },
         }
       },
 
       // 2. Deconstruct the orderItems array
       { $unwind: '$orderItems' },
 
-      // 3. Group by product ID and calculate totals
+      // 3. Re-match to filter out any remaining malformed items after unwind
+      {
+        $match: {
+          'orderItems.price': { $exists: true, $type: 'number' },
+          'orderItems.quantity': { $exists: true, $type: 'number', $gt: 0 },
+        }
+      },
+
+      // 4. Group by product ID and calculate totals
       {
         $group: {
           _id: '$orderItems.product', // Group by product ID
@@ -144,13 +152,13 @@ const getTopSellingProducts = async (req, res) => {
         },
       },
 
-      // 4. Sort by total revenue (descending)
+      // 5. Sort by total revenue (descending)
       { $sort: { totalRevenue: -1 } },
 
-      // 5. Limit to top 10 (or adjust as needed)
+      // 6. Limit to top 10 (or adjust as needed)
       { $limit: 10 },
 
-      // 6. Project the final structure
+      // 7. Project the final structure
       {
         $project: {
           _id: '$_id',
@@ -164,6 +172,7 @@ const getTopSellingProducts = async (req, res) => {
     res.json(topSelling);
   } catch (error) {
     console.error('Error fetching top selling products:', error);
+    // Log the specific database error for better debugging
     res.status(500).json({ message: 'Failed to fetch top selling products report.' });
   }
 };
@@ -174,8 +183,14 @@ const getTopSellingProducts = async (req, res) => {
 const getSalesByMonth = async (req, res) => {
   try {
     const salesByMonth = await Order.aggregate([
-      // 1. Match only orders with at least one item, without checking 'isPaid'
-      { $match: { 'orderItems.0': { $exists: true } } },
+      // 1. Match only documents with a valid orderItems array
+      {
+        $match: {
+          'orderItems': { $exists: true, $type: 'array', $ne: [] },
+          'orderItems.0.price': { $exists: true, $type: 'number' },
+          'orderItems.0.quantity': { $exists: true, $type: 'number' },
+        }
+      },
 
       // 2. Group by year and month
       {
@@ -216,6 +231,7 @@ const getSalesByMonth = async (req, res) => {
     res.json(salesByMonth);
   } catch (error) {
     console.error('Error fetching sales by month report:', error);
+    // Log the specific database error for better debugging
     res.status(500).json({ message: 'Failed to fetch monthly sales report.' });
   }
 };
