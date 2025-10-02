@@ -18,23 +18,15 @@ const addOrderItems = async (req, res) => {
     return;
   }
 
-  // --- BEGIN STOCK VALIDATION AND DEDUCTION (Using Transaction for Atomicity) ---
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     for (const item of orderItems) {
-      // 1. Get the latest product data within the transaction
       const product = await Product.findByIdAndUpdate(
         item.product,
-        {
-          // Use $inc to atomically decrement stock, but only if enough stock exists
-          $inc: { countInStock: -item.qty }
-        },
-        {
-          new: false,
-          session: session
-        }
+        { $inc: { countInStock: -item.quantity } }, // ✅ use quantity
+        { new: false, session }
       ).select('countInStock name');
 
       if (!product) {
@@ -43,19 +35,19 @@ const addOrderItems = async (req, res) => {
         return res.status(404).json({ message: `Product not found: ${item.name}` });
       }
 
-      // 2. Critical Stock Check (check if old stock was sufficient before proceeding)
-      if (product.countInStock < item.qty) {
+      if (product.countInStock < item.quantity) {
         await session.abortTransaction();
         session.endSession();
-        return res.status(400).json({ message: `Insufficient stock for ${item.name}. Available: ${product.countInStock}` });
+        return res.status(400).json({
+          message: `Insufficient stock for ${item.name}. Available: ${product.countInStock}`,
+        });
       }
     }
 
-    // 3. Create the Order (only runs if all stock checks/deductions were successful)
     const order = new Order({
       orderItems: orderItems.map(item => ({
         ...item,
-        quantity: item.qty,
+        quantity: item.quantity, // ✅ ensure consistency
       })),
       user: req.user._id,
       shippingAddress,
@@ -68,12 +60,10 @@ const addOrderItems = async (req, res) => {
 
     const createdOrder = await order.save({ session });
 
-    // 4. Commit the transaction (Order saved AND Stock updated)
     await session.commitTransaction();
     session.endSession();
 
     res.status(201).json(createdOrder);
-
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
@@ -120,43 +110,26 @@ const getOrders = async (req, res) => {
 const getTopSellingProducts = async (req, res) => {
   try {
     const topSelling = await Order.aggregate([
-      // 1. Match only orders with a valid, non-empty orderItems array
-      {
-        $match: {
-          orderItems: { $exists: true, $type: 'array', $ne: [] }
-        }
-      },
-      // 2. Deconstruct the orderItems array
       { $unwind: '$orderItems' },
-      // 3. Match again, ensuring each item has the necessary numeric fields
-      {
-        $match: {
-          'orderItems.price': { $exists: true, $type: 'number' },
-          'orderItems.quantity': { $exists: true, $type: 'number', $gt: 0 },
-        }
-      },
-      // 4. Group by product ID and calculate totals
       {
         $group: {
           _id: '$orderItems.product',
           name: { $first: '$orderItems.name' },
-          totalUnitsSold: { $sum: '$orderItems.quantity' },
+          totalUnitsSold: { $sum: '$orderItems.quantity' }, // ✅ fixed field name
           totalRevenue: {
             $sum: { $multiply: ['$orderItems.price', '$orderItems.quantity'] }
           },
         },
       },
-      // 5. Sort by total revenue (descending)
       { $sort: { totalRevenue: -1 } },
-      // 6. Limit to top 10
       { $limit: 10 },
-      // 7. Project the final structure
       {
         $project: {
-          _id: '$_id',
-          name: '$name',
-          totalUnitsSold: '$totalUnitsSold',
-          totalRevenue: '$totalRevenue',
+          _id: 0,
+          productId: '$_id',
+          name: 1,
+          totalUnitsSold: 1,
+          totalRevenue: 1,
         },
       },
     ]);
@@ -174,13 +147,11 @@ const getTopSellingProducts = async (req, res) => {
 const getSalesByMonth = async (req, res) => {
   try {
     const salesByMonth = await Order.aggregate([
-      // 1. Match only orders with a valid, non-empty orderItems array
       {
         $match: {
           orderItems: { $exists: true, $type: 'array', $ne: [] }
         }
       },
-      // 2. Group by year and month
       {
         $group: {
           _id: {
@@ -190,9 +161,7 @@ const getSalesByMonth = async (req, res) => {
           totalRevenue: { $sum: '$totalPrice' },
         },
       },
-      // 3. Sort chronologically
       { $sort: { '_id.year': 1, '_id.month': 1 } },
-      // 4. Project and format the output
       {
         $project: {
           _id: 0,
