@@ -114,4 +114,111 @@ const getOrders = async (req, res) => {
   res.json(orders);
 };
 
-export { addOrderItems, getOrderById, getMyOrders, getOrders };
+// @desc    Get top selling products for report
+// @route   GET /api/orders/top-selling
+// @access  Private/Admin
+const getTopSellingProducts = async (req, res) => {
+  try {
+    const topSelling = await Order.aggregate([
+      // 1. Filter for orders that have been paid
+      { $match: { isPaid: true } },
+      
+      // 2. Deconstruct the orderItems array
+      { $unwind: '$orderItems' },
+      
+      // 3. Group by product ID and calculate totals
+      {
+        $group: {
+          _id: '$orderItems.product', // Group by product ID
+          name: { $first: '$orderItems.name' },
+          totalUnitsSold: { $sum: '$orderItems.quantity' },
+          totalRevenue: { 
+            $sum: { $multiply: ['$orderItems.price', '$orderItems.quantity'] }
+          },
+        },
+      },
+      
+      // 4. Sort by total revenue (descending)
+      { $sort: { totalRevenue: -1 } },
+      
+      // 5. Limit to top 10 (or adjust as needed)
+      { $limit: 10 },
+      
+      // 6. Project the final structure
+      {
+        $project: {
+          _id: '$_id',
+          name: '$name',
+          totalUnitsSold: '$totalUnitsSold',
+          totalRevenue: '$totalRevenue',
+        },
+      },
+    ]);
+
+    res.json(topSelling);
+  } catch (error) {
+    console.error('Error fetching top selling products:', error);
+    res.status(500).json({ message: 'Failed to fetch top selling products report.' });
+  }
+};
+
+// @desc    Get sales data grouped by month
+// @route   GET /api/orders/sales-by-month
+// @access  Private/Admin
+const getSalesByMonth = async (req, res) => {
+  try {
+    const salesByMonth = await Order.aggregate([
+      // 1. Filter for orders that have been paid
+      { $match: { isPaid: true } },
+      
+      // 2. Group by year and month
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+          },
+          totalRevenue: { $sum: '$totalPrice' },
+        },
+      },
+      
+      // 3. Sort chronologically
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+      
+      // 4. Project and format the output
+      {
+        $project: {
+          _id: 0,
+          revenue: '$totalRevenue',
+          // Use $dateToString to format the month (requires MongoDB 4.0+)
+          month: {
+            $dateToString: {
+              format: '%b %Y',
+              date: {
+                $dateFromParts: {
+                  year: '$_id.year',
+                  month: '$_id.month',
+                  day: 1, // Must provide day for $dateFromParts
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    res.json(salesByMonth);
+  } catch (error) {
+    console.error('Error fetching sales by month report:', error);
+    res.status(500).json({ message: 'Failed to fetch monthly sales report.' });
+  }
+};
+
+export { 
+  addOrderItems, 
+  getOrderById, 
+  getMyOrders, 
+  getOrders, 
+  getTopSellingProducts, 
+  getSalesByMonth, 
+};
