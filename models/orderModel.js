@@ -8,7 +8,7 @@ const orderSchema = mongoose.Schema({
   },
   orderItems: [{
     name: { type: String, required: true },
-    qty: { type: Number, required: true },
+    quantity: { type: Number, required: true }, // Changed from 'qty' to 'quantity'
     image: { type: String, required: true },
     price: { type: Number, required: true },
     product: {
@@ -31,6 +31,12 @@ const orderSchema = mongoose.Schema({
     type: Number,
     required: true,
     default: 0.0,
+  },
+  // Added paymentStatus for consistency in flow
+  paymentStatus: {
+    type: String,
+    enum: ['pending', 'completed', 'failed'],
+    default: 'pending'
   },
   isPaid: {
     type: Boolean,
