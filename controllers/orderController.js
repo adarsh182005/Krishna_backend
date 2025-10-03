@@ -23,9 +23,10 @@ const addOrderItems = async (req, res) => {
 
   try {
     for (const item of orderItems) {
+      // FIX: Use item.qty instead of item.quantity
       const product = await Product.findByIdAndUpdate(
         item.product,
-        { $inc: { countInStock: -item.quantity } }, // ✅ use quantity
+        { $inc: { countInStock: -item.qty } },
         { new: false, session }
       ).select('countInStock name');
 
@@ -35,7 +36,8 @@ const addOrderItems = async (req, res) => {
         return res.status(404).json({ message: `Product not found: ${item.name}` });
       }
 
-      if (product.countInStock < item.quantity) {
+      // FIX: Use item.qty for the stock check
+      if (product.countInStock < item.qty) {
         await session.abortTransaction();
         session.endSession();
         return res.status(400).json({
@@ -47,7 +49,8 @@ const addOrderItems = async (req, res) => {
     const order = new Order({
       orderItems: orderItems.map(item => ({
         ...item,
-        quantity: item.quantity, // ✅ ensure consistency
+        // FIX: Map the frontend's 'qty' field to the backend model's 'quantity' field
+        quantity: item.qty,
       })),
       user: req.user._id,
       shippingAddress,
@@ -115,7 +118,7 @@ const getTopSellingProducts = async (req, res) => {
         $group: {
           _id: '$orderItems.product',
           name: { $first: '$orderItems.name' },
-          totalUnitsSold: { $sum: '$orderItems.quantity' }, // ✅ fixed field name
+          totalUnitsSold: { $sum: '$orderItems.quantity' },
           totalRevenue: {
             $sum: { $multiply: ['$orderItems.price', '$orderItems.quantity'] }
           },
