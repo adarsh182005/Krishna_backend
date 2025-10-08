@@ -3,6 +3,7 @@ const router = express.Router();
 import {
   addOrderItems,
   getOrderById,
+  updateOrderToPaid,
   getMyOrders,
   getOrders,
   getTopSellingProducts,
@@ -15,6 +16,7 @@ import Order from '../models/orderModel.js';
 router.route('/').post(protect, addOrderItems).get(protect, admin, getOrders);
 router.route('/myorders').get(protect, getMyOrders);
 router.route('/:id').get(protect, getOrderById);
+router.route('/:id/pay').put(protect, updateOrderToPaid);
 
 // Admin Sales Report Routes
 router.route('/top-selling').get(protect, admin, getTopSellingProducts);
@@ -25,7 +27,7 @@ router.get('/stats', protect, admin, async (req, res) => {
   try {
     const totalOrders = await Order.countDocuments();
     const totalRevenue = await Order.aggregate([
-      { $match: { paymentStatus: 'completed' } }, // Corrected field
+      { $match: { isPaid: true } },
       { $group: { _id: null, total: { $sum: '$totalPrice' } } }
     ]);
     const pendingOrders = await Order.countDocuments({ status: { $in: ['pending', 'confirmed', 'processing', 'shipped'] } });
