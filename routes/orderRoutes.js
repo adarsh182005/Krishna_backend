@@ -25,7 +25,7 @@ router.get('/stats', protect, admin, async (req, res) => {
   try {
     const totalOrders = await Order.countDocuments();
     const totalRevenue = await Order.aggregate([
-      { $match: { isPaid: true } },
+      { $match: { paymentStatus: 'completed' } }, // Corrected field
       { $group: { _id: null, total: { $sum: '$totalPrice' } } }
     ]);
     const pendingOrders = await Order.countDocuments({ status: { $in: ['pending', 'confirmed', 'processing', 'shipped'] } });
