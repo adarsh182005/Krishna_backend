@@ -10,7 +10,6 @@ const addOrderItems = async (req, res) => {
         return;
     }
 
-    // --- RE-ENABLING TRANSACTION FOR STOCK MANAGEMENT ---
     const session = await mongoose.startSession();
     session.startTransaction();
 
@@ -21,11 +20,13 @@ const addOrderItems = async (req, res) => {
 
             if (!product) {
                 await session.abortTransaction();
+                session.endSession();
                 return res.status(404).json({ message: `Product not found: ${item.name}` });
             }
 
             if (product.countInStock < item.qty) {
                 await session.abortTransaction();
+                session.endSession();
                 return res.status(400).json({
                     message: `Insufficient stock for ${item.name}. Only ${product.countInStock} left.`,
                 });
@@ -36,16 +37,20 @@ const addOrderItems = async (req, res) => {
         }
 
         const order = new Order({
+            // *** THIS IS THE FIX ***
+            // The item object from the frontend already contains the 'product' field.
+            // We just need to map 'qty' to 'quantity'.
             orderItems: orderItems.map(item => ({
                 ...item,
                 quantity: item.qty,
-                product: item._id
+                _id: undefined // Mongoose will generate a new ObjectId for the subdocument
             })),
             user: req.user._id,
             shippingAddress,
             paymentMethod,
             totalPrice,
-            isPaid: true, // Marking as paid for testing
+            // These fields are set for the test-mode payment bypass
+            isPaid: true,
             paidAt: Date.now(),
             paymentStatus: 'completed',
         });
